@@ -1,15 +1,10 @@
 # LeetMap
 
-
-
 https://github.com/user-attachments/assets/16a6fe4f-471a-46cb-a422-827405b7f069
-
-
-
 
 A web application designed to help software engineers prepare for technical interviews by cataloging, analyzing, and filtering LeetCode problems encountered in interviews at top tech companies. 
 
-The application parses real interview frequency data and displays it in a clean, interactive dashboard. Users can filter by company (Google, Meta, Netflix, Amazon, ByteDance, J.P. Morgan, etc.), difficulty levels, time ranges, and search keywords. It also supports tracking custom interview questions.
+The application parses real interview frequency data, stores it in a **Turso / SQLite** database, and displays it in a clean, interactive dashboard. Users can filter by company (Google, Meta, Netflix, Amazon, ByteDance, J.P. Morgan, etc.), difficulty levels, time ranges, and search keywords. It also supports tracking custom interview questions in a dedicated portal.
 
 ---
 
@@ -17,19 +12,27 @@ The application parses real interview frequency data and displays it in a clean,
 
 The project is structured as a clean, standalone monorepo:
 
-```
+```text
 leetmap/
 ├── backend/                  # FastAPI Python Backend
-│   ├── app.py                # Main API entrypoint
-│   ├── parser.py             # Data parser for CSV data-sources
-│   ├── database/             # Generated database JSON files
-│   └── requirements.txt      # Python dependencies
+│   ├── app.py                # Main API routes (serves data from Turso/SQLite)
+│   ├── parser.py             # Parses CSV sources and batch-syncs to Database
+│   ├── database/             
+│   │   ├── connection.py     # Database connection manager (Turso / SQLite fallback)
+│   │   └── leetmap.db        # Local fallback SQLite database file (git-ignored)
+│   ├── .env                  # Environment secrets for Turso (git-ignored)
+│   ├── runtime.txt           # Python version pin (3.12.3) for Render deployment
+│   ├── .python-version       # Python version pin for local environment manager
+│   └── requirements.txt      # Python dependencies (libsql-client, python-dotenv, etc.)
 │
 ├── frontend/                 # React + TypeScript Frontend (TanStack Start / Vite)
 │   ├── src/                  # Components, hooks, routes, and views
-│   ├── public/               # Static assets
+│   │   └── routes/
+│   │       ├── index.tsx     # Explorer dashboard view with skeleton loading UI
+│   │       └── portal.tsx    # Custom interview registry with skeleton loading UI
+│   ├── .env                  # Stores VITE_API_URL pointing to backend
 │   ├── package.json          # Node dependencies & npm scripts
-│   └── vite.config.ts        # Vite configuration
+│   └── vite.config.ts        # Vite/Vinxi configuration
 │
 ├── data-sources/             # Raw interview frequency CSV files
 │   ├── repo1/                # Source repositories per company
@@ -42,6 +45,9 @@ leetmap/
 
 ## ✨ Features
 
+- **Hybrid Database Layer**: Native support for **Turso Cloud Database** in production and local SQLite fallback (`leetmap.db`) for offline development.
+- **Batch Processing Sync**: Parser aggregates CSV files and bulk-uploads all 3,000+ entries into Turso in efficient transaction batches.
+- **Dynamic Loading Skeletons**: Responsive, shimmering placeholder cards on both pages to handle API request latencies gracefully.
 - **Company Filtering**: Select from major tech companies with normalized representations (e.g., Meta/Facebook, Google, Netflix, Amazon, ByteDance).
 - **Timeframe Analysis**: View questions based on when they were asked (30 days, 3 months, 6 months, all-time).
 - **Custom Question Registry**: Create, edit, and keep track of custom questions encountered during actual interviews.
@@ -50,17 +56,34 @@ leetmap/
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Database Setup & Configuration
 
-### Prerequisites
+The application uses `libsql-client` to manage database connections. By default, it runs in **Local Fallback Mode**.
 
-- **Python**: `python3` (v3.9 or higher recommended)
-- **Node.js & npm**: Node.js (v18 or higher recommended) and `npm` (or `bun`)
+### 1. Local Fallback Mode (No setup required)
+If no environment variables are specified, the database connects to a local SQLite file at `backend/database/leetmap.db`. When you run the parser or launch the app, this file is automatically created and populated.
+
+### 2. Cloud Turso Mode
+To connect both your local and production environments to a cloud Turso database:
+1. Create a database named `leetmap` in your **[Turso Console](https://turso.tech/)**.
+2. Create a file named `.env` in the `backend/` directory:
+   ```env
+   TURSO_DATABASE_URL=https://your-database-name.turso.io
+   TURSO_AUTH_TOKEN=your-jwt-auth-token
+   ```
+   *Note: Use the `https://` protocol prefix for secure cloud connection.*
+3. Run the parser to sync your data up to the cloud:
+   ```bash
+   cd backend
+   python3 parser.py
+   ```
+
+---
+
+## 🚀 Getting Started Locally
 
 ### Quick Start (One Command)
-
-You can launch both the frontend and backend servers using the helper script in the root directory:
-
+Launch both servers using the helper script in the root directory:
 ```bash
 chmod +x start.sh
 ./start.sh
@@ -68,52 +91,29 @@ chmod +x start.sh
 
 This will automatically:
 1. Start the FastAPI backend on `http://localhost:5001`.
-2. Start the Vite React development server.
-3. Open your terminal logs, prompting you to navigate to the client URL (usually `http://localhost:5173` or `http://localhost:8080`).
+2. Start the Vite React development server on `http://localhost:8081`.
 
 ---
 
-## 🛠️ Manual Configuration & Scripts
+## ☁️ Deployment
 
-### 1. Backend setup
+### 1. Backend Deployment (Render)
+1. Set up a new **Web Service** on Render pointing to your repository.
+2. Configure settings:
+   * **Root Directory:** `backend`
+   * **Language:** `Python`
+   * **Build Command:** `pip install -r requirements.txt`
+   * **Start Command:** `uvicorn app:app --host 0.0.0.0 --port $PORT`
+3. Under **Environment**, add the following environment variables:
+   * `TURSO_DATABASE_URL` = *(your database URL)*
+   * `TURSO_AUTH_TOKEN` = *(your auth token)*
+4. Deploy. Render will automatically read `runtime.txt` and use Python `3.12.3`.
 
-If you prefer to run the backend manually, navigate to the `backend/` directory:
-
-```bash
-cd backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the parser to generate the database from data-sources
-python3 -c "import parser; parser.run_parser()"
-
-# Start the FastAPI dev server
-python3 -m uvicorn app:app --port 5001 --host 0.0.0.0
-```
-
-### 2. Frontend Setup
-
-To run the React web client manually, navigate to the `frontend/` directory:
-
-```bash
-cd frontend
-
-# Install dependencies (if not already done)
-npm install
-
-# Start the Vite development server
-npm run dev
-
-# Build the client for production
-npm run build
-```
-
----
-
-## 📊 How the Data Parser Works
-
-The backend includes a data parsing module (`backend/parser.py`) that aggregates company-specific LeetCode spreadsheets. 
-- It reads CSV files (e.g., `1. Thirty Days.csv`, `2. Three Months.csv`, `3. Six Months.csv`, etc.) located inside the root `data-sources/` folder.
-- It normalizes company names, maps problem links to slugs, and outputs a consolidated JSON database to `backend/database/leetcode_db.json`.
-- The FastAPI server serves this aggregated data via the `/api/problems` endpoint.
+### 2. Frontend Deployment (Vercel)
+Vercel has native support for TanStack Start (Vinxi) SSR applications.
+1. Connect your project to Vercel (e.g., using GitHub integration or the Vercel CLI).
+2. Configure settings:
+   * **Root Directory:** `frontend`
+3. Add the following **Environment Variable**:
+   * `VITE_API_URL` = `https://your-render-backend-url.onrender.com/api`
+4. Deploy!
