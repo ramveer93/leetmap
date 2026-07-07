@@ -18,6 +18,11 @@ frontend/.nitro
 *.local
 backend/__pycache__/
 backend/database/leetcode_db.json
+backend/.env
+.env
+*.db
+backend/database/leetmap.db
+**/__pycache__/
 
 # Wrangler / Cloudflare
 .wrangler/

@@ -1,11 +1,15 @@
 import os
 import json
 import time
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
-from parser import run_parser, OUTPUT_DB_PATH
+from typing import List, Dict, Optional, Any
+from parser import run_parser
+
+# Load env variables
+load_dotenv()
 
 app = FastAPI(title="LeetMap API")
 
@@ -19,56 +23,132 @@ app.add_middleware(
     expose_headers=["x-total-count"],
 )
 
-DB_DIR = os.path.dirname(OUTPUT_DB_PATH)
-CUSTOM_DB_PATH = os.path.join(DB_DIR, "custom_questions.json")
-
-leetcode_db = {}
-custom_questions = []
-
-def load_databases():
-    global leetcode_db, custom_questions
-    # Load LeetCode DB
-    if os.path.exists(OUTPUT_DB_PATH):
-        try:
-            with open(OUTPUT_DB_PATH, 'r', encoding='utf-8') as f:
-                leetcode_db = json.load(f)
-            print(f"Loaded {len(leetcode_db)} LeetCode problems.")
-        except Exception as e:
-            print(f"Error loading LeetCode DB: {e}")
-            leetcode_db = {}
-    else:
-        print("LeetCode DB does not exist yet. Run parser first.")
-        leetcode_db = {}
-
-    # Load Custom DB
-    if os.path.exists(CUSTOM_DB_PATH):
-        try:
-            with open(CUSTOM_DB_PATH, 'r', encoding='utf-8') as f:
-                custom_questions = json.load(f)
-            print(f"Loaded {len(custom_questions)} custom questions.")
-        except Exception as e:
-            print(f"Error loading custom questions: {e}")
-            custom_questions = []
-    else:
-        custom_questions = []
-        save_custom_db()
-
-def save_leetcode_db():
+def get_leetcode_db() -> Dict[str, Dict[str, Any]]:
+    from database.connection import get_client
+    client = get_client()
     try:
-        with open(OUTPUT_DB_PATH, 'w', encoding='utf-8') as f:
-            json.dump(leetcode_db, f, indent=2, ensure_ascii=False)
+        res = client.execute("SELECT * FROM leetcode_problems")
+        db = {}
+        for row in res:
+            db[row["slug"]] = {
+                "id": row["id"],
+                "title": row["title"],
+                "difficulty": row["difficulty"],
+                "url": row["url"],
+                "topics": json.loads(row["topics"] or "[]"),
+                "companies": json.loads(row["companies"] or "{}")
+            }
+        return db
     except Exception as e:
-        print(f"Error saving LeetCode DB: {e}")
+        print(f"Error loading LeetCode DB from database: {e}")
+        return {}
+    finally:
+        client.close()
 
-def save_custom_db():
+def save_leetcode_problem_to_db(slug: str, prob: Dict[str, Any]):
+    from database.connection import get_client
+    from libsql_client import Statement
+    client = get_client()
     try:
-        with open(CUSTOM_DB_PATH, 'w', encoding='utf-8') as f:
-            json.dump(custom_questions, f, indent=2, ensure_ascii=False)
+        client.execute(Statement(
+            "INSERT OR REPLACE INTO leetcode_problems (slug, id, title, difficulty, url, topics, companies) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                slug,
+                str(prob.get("id", "")),
+                prob.get("title", ""),
+                prob.get("difficulty", ""),
+                prob.get("url", ""),
+                json.dumps(prob.get("topics", [])),
+                json.dumps(prob.get("companies", {}))
+            ]
+        ))
     except Exception as e:
-        print(f"Error saving Custom DB: {e}")
+        print(f"Error saving LeetCode problem {slug} to database: {e}")
+        raise e
+    finally:
+        client.close()
 
-# Initial load
-load_databases()
+def get_custom_problems_db(query: str = "") -> List[Dict[str, Any]]:
+    from database.connection import get_client
+    client = get_client()
+    try:
+        if query:
+            sql = "SELECT * FROM custom_questions WHERE LOWER(title) LIKE ? OR LOWER(company) LIKE ? OR LOWER(description) LIKE ?"
+            p = f"%{query.lower()}%"
+            res = client.execute(sql, [p, p, p])
+        else:
+            res = client.execute("SELECT * FROM custom_questions ORDER BY id DESC")
+            
+        results = []
+        for row in res:
+            results.append({
+                "id": row["id"],
+                "title": row["title"],
+                "company": row["company"],
+                "description": row["description"] or "",
+                "solution": row["solution"] or "",
+                "code_language": row["code_language"] or "python",
+                "role": row["role"] or "",
+                "difficulty": row["difficulty"] or "Medium"
+            })
+        return results
+    except Exception as e:
+        print(f"Error loading custom questions from database: {e}")
+        return []
+    finally:
+        client.close()
+
+def add_custom_problem_to_db(prob: Dict[str, Any]) -> Dict[str, Any]:
+    from database.connection import get_client
+    from libsql_client import Statement
+    client = get_client()
+    try:
+        client.execute(Statement(
+            "INSERT INTO custom_questions (title, company, description, solution, code_language, role, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                prob["title"],
+                prob["company"],
+                prob["description"],
+                prob["solution"],
+                prob["code_language"],
+                prob["role"],
+                prob["difficulty"]
+            ]
+        ))
+        # Fetch the newly created record to get the auto-generated id
+        res = client.execute(
+            "SELECT * FROM custom_questions WHERE title = ? AND company = ? ORDER BY id DESC LIMIT 1",
+            [prob["title"], prob["company"]]
+        )
+        row = list(res)[0] if list(res) else None
+        if row:
+            return {
+                "id": row["id"],
+                "title": row["title"],
+                "company": row["company"],
+                "description": row["description"] or "",
+                "solution": row["solution"] or "",
+                "code_language": row["code_language"] or "python",
+                "role": row["role"] or "",
+                "difficulty": row["difficulty"] or "Medium"
+            }
+        raise HTTPException(status_code=500, detail="Failed to fetch created custom question.")
+    except Exception as e:
+        print(f"Error adding custom question to database: {e}")
+        raise e
+    finally:
+        client.close()
+
+def delete_custom_problem_from_db(question_id: int):
+    from database.connection import get_client
+    client = get_client()
+    try:
+        client.execute("DELETE FROM custom_questions WHERE id = ?", [question_id])
+    except Exception as e:
+        print(f"Error deleting custom question {question_id} from database: {e}")
+        raise e
+    finally:
+        client.close()
 
 # Pydantic models for request validation
 class CompanyUpdate(BaseModel):
@@ -111,6 +191,8 @@ def get_problems(
     target_difficulty = None
     if difficulty and difficulty.strip() and difficulty.strip().lower() != 'all':
         target_difficulty = difficulty.strip().lower()
+        
+    leetcode_db = get_leetcode_db()
     
     # If company query is provided, find all problems containing that company
     if company:
@@ -173,6 +255,7 @@ def get_problems(
 
 @app.get("/api/companies")
 def get_companies():
+    leetcode_db = get_leetcode_db()
     companies_set = set()
     for prob in leetcode_db.values():
         for c in prob.get('companies', {}).keys():
@@ -181,6 +264,8 @@ def get_companies():
 
 @app.post("/api/problems/{slug}/company")
 def add_company_to_problem(slug: str, data: CompanyUpdate):
+    leetcode_db = get_leetcode_db()
+    
     # Create problem on the fly if it does not exist
     if slug not in leetcode_db:
         title = data.title or slug.replace('-', ' ').title()
@@ -188,7 +273,7 @@ def add_company_to_problem(slug: str, data: CompanyUpdate):
         url = data.url or f"https://leetcode.com/problems/{slug}"
         topics = data.topics or []
         
-        leetcode_db[slug] = {
+        prob_data = {
             "id": "",
             "title": title,
             "difficulty": difficulty,
@@ -196,6 +281,8 @@ def add_company_to_problem(slug: str, data: CompanyUpdate):
             "topics": topics,
             "companies": {}
         }
+    else:
+        prob_data = dict(leetcode_db[slug])
     
     company_name = data.company_name.strip()
     if not company_name:
@@ -212,19 +299,19 @@ def add_company_to_problem(slug: str, data: CompanyUpdate):
         "all": data.all
     }
     
-    if canonical_company not in leetcode_db[slug]["companies"]:
-        leetcode_db[slug]["companies"][canonical_company] = freq_data
+    if canonical_company not in prob_data["companies"]:
+        prob_data["companies"][canonical_company] = freq_data
     else:
         # Merge by updating or keeping max frequency
         for period, val in freq_data.items():
-            leetcode_db[slug]["companies"][canonical_company][period] = max(
-                leetcode_db[slug]["companies"][canonical_company][period],
+            prob_data["companies"][canonical_company][period] = max(
+                prob_data["companies"][canonical_company][period],
                 val
             )
             
-    save_leetcode_db()
+    save_leetcode_problem_to_db(slug, prob_data)
     
-    response_item = dict(leetcode_db[slug])
+    response_item = dict(prob_data)
     response_item['slug'] = slug
     return response_item
 
@@ -235,18 +322,7 @@ def get_custom_problems(
     page: int = Query(1, ge=1),
     limit: int = Query(150, ge=1)
 ):
-    query = q.strip().lower()
-    if not query:
-        results = list(custom_questions)
-    else:
-        results = []
-        for q_item in custom_questions:
-            title = q_item.get('title', '').lower()
-            company = q_item.get('company', '').lower()
-            desc = q_item.get('description', '').lower()
-            if query in title or query in company or query in desc:
-                results.append(q_item)
-                
+    results = get_custom_problems_db(q)
     response.headers["x-total-count"] = str(len(results))
     skip = (page - 1) * limit
     return results[skip : skip + limit]
@@ -260,36 +336,32 @@ def add_custom_problem(data: CustomQuestionCreate):
         raise HTTPException(status_code=400, detail="Title and Company are required.")
         
     new_q = {
-        "id": int(time.time()),
         "title": title,
         "company": company,
-        "description": data.description.strip(),
-        "solution": data.solution.strip(),
-        "code_language": data.code_language.strip(),
-        "role": data.role.strip(),
-        "difficulty": data.difficulty.strip()
+        "description": data.description.strip() if data.description else "",
+        "solution": data.solution.strip() if data.solution else "",
+        "code_language": data.code_language.strip() if data.code_language else "python",
+        "role": data.role.strip() if data.role else "",
+        "difficulty": data.difficulty.strip() if data.difficulty else "Medium"
     }
     
-    custom_questions.append(new_q)
-    save_custom_db()
-    return new_q
+    return add_custom_problem_to_db(new_q)
 
 @app.delete("/api/custom-problems/{question_id}")
 def delete_custom_problem(question_id: int):
-    global custom_questions
-    custom_questions = [q for q in custom_questions if q.get('id') != question_id]
-    save_custom_db()
+    delete_custom_problem_from_db(question_id)
     return {"status": "success"}
 
 @app.post("/api/parser/run")
 def trigger_parser():
     try:
         run_parser()
-        load_databases()
+        leetcode_db = get_leetcode_db()
         return {"status": "success", "count": len(leetcode_db)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=5001, reload=True)
+    port = int(os.environ.get("PORT", 5001))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)

@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 
-const API_BASE = "http://localhost:5001/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 export const Route = createFileRoute("/")({
   component: Index,

@@ -205,5 +205,47 @@ def run_parser():
     print(f"Parsing complete! Total unique problems compiled: {len(database)}")
     print(f"Database saved to {OUTPUT_DB_PATH}")
 
+    # Synchronize database with newly compiled questions
+    upload_to_db(database)
+
+def upload_to_db(database):
+    from database.connection import get_client
+    from libsql_client import Statement
+    
+    client = get_client()
+    try:
+        print("Clearing existing problems from database...")
+        client.execute("DELETE FROM leetcode_problems")
+        
+        print("Preparing database sync statements...")
+        statements = []
+        for slug, prob in database.items():
+            statements.append(Statement(
+                "INSERT INTO leetcode_problems (slug, id, title, difficulty, url, topics, companies) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    slug,
+                    str(prob.get("id", "")),
+                    prob.get("title", ""),
+                    prob.get("difficulty", ""),
+                    prob.get("url", ""),
+                    json.dumps(prob.get("topics", [])),
+                    json.dumps(prob.get("companies", {}))
+                ]
+            ))
+            
+        print(f"Uploading {len(statements)} problems to database in batches...")
+        chunk_size = 200
+        for i in range(0, len(statements), chunk_size):
+            chunk = statements[i:i+chunk_size]
+            client.batch(chunk)
+            print(f"Uploaded batch {i//chunk_size + 1}/{(len(statements)-1)//chunk_size + 1}")
+            
+        print("Database sync complete!")
+    except Exception as e:
+        print(f"Error uploading parsed data to database: {e}")
+        raise e
+    finally:
+        client.close()
+
 if __name__ == "__main__":
     run_parser()

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { NotebookPen, Plus, Trash2, Search, X } from "lucide-react";
 import { AppFooter, AppHeader } from "@/components/app-chrome";
 
-const API_BASE = "http://localhost:5001/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
 export const Route = createFileRoute("/portal")({
   head: () => ({
