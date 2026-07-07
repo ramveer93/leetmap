@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1783391521,
+    "title": "Grid Traversal with Obstacles",
+    "company": "Uber",
+    "description": "Given a grid with obstacles, find path.",
+    "solution": "def solve(grid):\n    return True",
+    "code_language": "python",
+    "role": "Staff Engineer",
+    "difficulty": "Hard"
+  }
+]

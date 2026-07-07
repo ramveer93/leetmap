@@ -8,13 +8,16 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-ssr
-.output
-.vinxi
-.tanstack/**
-.nitro
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/.output
+frontend/.vinxi
+frontend/.tanstack/**
+frontend/.nitro
 *.local
+backend/__pycache__/
+backend/database/leetcode_db.json
 
 # Wrangler / Cloudflare
 .wrangler/
