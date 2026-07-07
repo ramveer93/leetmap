@@ -154,6 +154,7 @@ function Index() {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   
   // Pagination State
@@ -205,6 +206,7 @@ function Index() {
   };
 
   const fetchProblems = async () => {
+    setLoading(true);
     try {
       let url = `${API_BASE}/problems?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`;
       if (selectedCompany && selectedCompany !== "All") {
@@ -226,6 +228,8 @@ function Index() {
       }
     } catch (err) {
       console.error("Failed to fetch problems:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -481,7 +485,20 @@ function Index() {
               </span>
             </div>
 
-            {filtered.length === 0 ? (
+            {loading ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-44 rounded-xl border border-hairline bg-surface/50 animate-pulse flex flex-col justify-between p-5">
+                    <div className="space-y-3">
+                      <div className="h-4 w-1/4 rounded bg-muted/40 animate-pulse" />
+                      <div className="h-6 w-3/4 rounded bg-muted/40 animate-pulse" />
+                      <div className="h-4 w-1/2 rounded bg-muted/40 animate-pulse" />
+                    </div>
+                    <div className="h-8 w-1/3 rounded bg-muted/40 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-hairline bg-surface/20 text-center">
                 <p className="text-sm text-foreground">No problems match your filters.</p>
                 <button

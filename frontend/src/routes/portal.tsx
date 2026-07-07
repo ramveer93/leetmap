@@ -33,6 +33,7 @@ type Entry = {
 function Portal() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     company: "",
     title: "",
@@ -50,6 +51,7 @@ function Portal() {
   }, [query]);
 
   const fetchEntries = async () => {
+    setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/custom-problems?q=${encodeURIComponent(query)}`);
       if (res.ok) {
@@ -58,6 +60,8 @@ function Portal() {
       }
     } catch (err) {
       console.error("Failed to fetch custom problems:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -276,7 +280,19 @@ function Portal() {
               </span>
             </div>
 
-            {entries.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col gap-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-28 rounded-xl bg-surface/50 p-5 ring-1 ring-hairline animate-pulse flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-4 w-16 rounded bg-muted/40 animate-pulse" />
+                      <div className="h-4 w-24 rounded bg-muted/40 animate-pulse" />
+                    </div>
+                    <div className="h-6 w-1/2 rounded bg-muted/40 animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : entries.length === 0 ? (
               <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-hairline bg-surface/20 text-sm text-muted-foreground">
                 No custom questions yet — add your first one on the left.
               </div>
