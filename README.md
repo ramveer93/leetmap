@@ -1,5 +1,12 @@
 # LeetMap
 
+
+
+https://github.com/user-attachments/assets/16a6fe4f-471a-46cb-a422-827405b7f069
+
+
+
+
 A web application designed to help software engineers prepare for technical interviews by cataloging, analyzing, and filtering LeetCode problems encountered in interviews at top tech companies. 
 
 The application parses real interview frequency data and displays it in a clean, interactive dashboard. Users can filter by company (Google, Meta, Netflix, Amazon, ByteDance, J.P. Morgan, etc.), difficulty levels, time ranges, and search keywords. It also supports tracking custom interview questions.
